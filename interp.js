@@ -167,8 +167,7 @@ function handleTokens(t) {
 			return {
 				variant: "expr",
 				type: token.content,
-				value: tokens[1].content[1],
-				kind: tokens[2].content[1].content,
+				value: tokens[1].content[1]
 			}
 		}
 		return token.content;
@@ -198,11 +197,11 @@ console.assert(sExpStr('((1) (2) 3)') === '{"type":"list","content":[{"type":"li
 console.assert(sExpStr('(c (a b e) d)') === '{"type":"list","content":[{"type":"symbol","content":"c"},{"type":"list","content":[{"type":"symbol","content":"a"},{"type":"symbol","content":"b"},{"type":"symbol","content":"e"}]},{"type":"symbol","content":"d"}]}'); // This test case doesn't work
 console.assert(sExpStr('((a b (d)) (c))') === '{"type":"list","content":[{"type":"list","content":[{"type":"symbol","content":"a"},{"type":"symbol","content":"b"},{"type":"list","content":[{"type":"symbol","content":"d"}]}]},{"type":"list","content":[{"type":"symbol","content":"c"}]}]}');
 
-const expected = '{"variant":"mod","body":{"variant":"expr_stmt","value":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"5"},"kind":"#f"}}}';
+const expected = '{"variant":"mod","body":{"variant":"expr_stmt","value":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"5"}}}}';
 console.assert(interp("(Module [body ((Expr [value (Constant [value 5] [kind #f])]))] [type_ignores ()])") === expected);
-const expected2 = '{"variant":"expr","type":"BinOp","left":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"5"},"kind":"#f"},"op":"Add","right":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"5"},"kind":"#f"}}';
+const expected2 = '{"variant":"expr","type":"BinOp","left":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"5"}},"op":"Add","right":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"5"}}}';
 console.assert(interp("(BinOp [left (Constant [value 5] [kind #f])] [op (Add)] [right (Constant [value 5] [kind #f])])") === expected2);
 const basicUnary = "(UnaryOp [op (USub)] [operand (Constant [value 4] [kind #f])])";
-console.assert(interp(basicUnary) === '{"variant":"expr","type":"UnaryOp","op":"USub","operand":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"4"},"kind":"#f"}}');
+console.assert(interp(basicUnary) === '{"variant":"expr","type":"UnaryOp","op":"USub","operand":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"4"}}}');
 
 console.log(interp(typeof process.argv[2] === "string" ? process.argv[2] : basicUnary));
