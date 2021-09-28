@@ -184,6 +184,69 @@ function interp(input) {
 	throw "Cannot interpret non-list module";
 }
 
+function getTokens(input) {
+	const parsed = parse(input, 0)
+	return handleTokens(parsed)
+}
+
+// Binary operations
+function add(left, right) {
+	return left + right;
+}
+function sub(left, right) {
+	return left - right;
+}
+function mult(left, right) {
+	return left * right;
+}
+
+// Unary operations
+function uAdd(operand) {
+	return +operand;
+}
+function uSub(operand) {
+	return -operand;
+}
+
+// Actual interpreter
+function interpretTokens(tokens) {
+	if (tokens.variant === "mod") {
+		const mainExpr = tokens.body.value;
+		return interpretTokens(mainExpr);
+	}
+	if (tokens.variant === "expr") {
+		if (tokens.type === "BinOp") {
+			const left = interpretTokens(tokens.left);
+			const right = interpretTokens(tokens.right);
+			if (tokens.op === "Add") {
+				return add(left, right);
+			}
+			if (tokens.op === "Sub") {
+				return sub(left, right);
+			}
+			if (tokens.op === "Mult") {
+				return mult(left, right);
+			}
+		}
+		if (tokens.type === "UnaryOp") {
+			const operand = interpretTokens(tokens.operand);
+			if (tokens.op === "UAdd") {
+				return uAdd(operand);
+			}
+			if (tokens.op === "USub") {
+				return uSub(operand);
+			}
+		}
+		if (tokens.type === "Constant") {
+			return Number(tokens.value.content);
+		}
+	}
+}
+
+function interp2(input) {
+	return `(value ${interpretTokens(getTokens(input))})`;
+}
+
 console.assert(sExpStr('a') === '{"type":"symbol","content":"a"}');
 console.assert(sExpStr('"a"') === '{"type":"string","content":"\\"a\\""}');
 console.assert(sExpStr('lance_meurs') === '{"type":"symbol","content":"lance_meurs"}');
@@ -201,7 +264,21 @@ const expected = '{"variant":"mod","body":{"variant":"expr_stmt","value":{"varia
 console.assert(interp("(Module [body ((Expr [value (Constant [value 5] [kind #f])]))] [type_ignores ()])") === expected);
 const expected2 = '{"variant":"expr","type":"BinOp","left":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"5"}},"op":"Add","right":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"5"}}}';
 console.assert(interp("(BinOp [left (Constant [value 5] [kind #f])] [op (Add)] [right (Constant [value 5] [kind #f])])") === expected2);
-const basicUnary = "(UnaryOp [op (USub)] [operand (Constant [value 4] [kind #f])])";
-console.assert(interp(basicUnary) === '{"variant":"expr","type":"UnaryOp","op":"USub","operand":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"4"}}}');
+const basicUnary = "(UnaryOp [op (USub)] [operand (Constant [value 0] [kind #f])])";
+console.assert(interp(basicUnary) === '{"variant":"expr","type":"UnaryOp","op":"USub","operand":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"0"}}}');
 
-console.log(interp(typeof process.argv[2] === "string" ? process.argv[2] : basicUnary));
+// console.log(interp(typeof process.argv[2] === "string" ? process.argv[2] : basicUnary)); // Project 1
+
+// Constant
+console.assert(interp2("(Module [body ((Expr [value (Constant [value 5] [kind #f])]))] [type_ignores ()])") === "(value 5)");
+// Binaries
+console.assert(interp2("(BinOp [left (Constant [value 21] [kind #f])] [op (Add)] [right (Constant [value 47] [kind #f])])") === "(value 68)");
+console.assert(interp2("(BinOp [left (Constant [value 723] [kind #f])] [op (Sub)] [right (Constant [value 42] [kind #f])])") === "(value 681)");
+console.assert(interp2("(BinOp [left (Constant [value 12] [kind #f])] [op (Mult)] [right (Constant [value 4] [kind #f])])") === "(value 48)");
+// Combo
+console.assert(interp2("(BinOp [left (UnaryOp [op (USub)] [operand (Constant [value 4] [kind #f])])] [op (Mult)] [right (Constant [value 4] [kind #f])])") === "(value -16)");
+// Unaries
+console.assert(interp2("(UnaryOp [op (USub)] [operand (Constant [value 4] [kind #f])])") === "(value -4)");
+console.assert(interp2(basicUnary) === "(value 0)");
+
+console.log(interp2(typeof process.argv[2] === "string" ? process.argv[2] : basicUnary)); // Project 2
