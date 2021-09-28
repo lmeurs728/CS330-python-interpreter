@@ -189,23 +189,27 @@ function getTokens(input) {
 	return handleTokens(parsed)
 }
 
+// Surface functions
+// Binary operations
+function sub(left, right) {
+	return left - right;
+}
+// Unary operations
+function uSub(operand) {
+	return -operand;
+}
+
+// Core functions
 // Binary operations
 function add(left, right) {
 	return left + right;
 }
-function sub(left, right) {
-	return left - right;
-}
 function mult(left, right) {
 	return left * right;
 }
-
 // Unary operations
 function uAdd(operand) {
 	return +operand;
-}
-function uSub(operand) {
-	return -operand;
 }
 
 // Actual interpreter
@@ -247,6 +251,51 @@ function interp2(input) {
 	return `(value ${interpretTokens(getTokens(input))})`;
 }
 
+// Translates between surface syntax AST and core syntax AST
+function desugar(tokens) {
+	if (tokens.variant === "mod") {
+		return {
+			variant: "mod", 
+			body: {
+				variant: "expr_stmt",
+				value: desugar(tokens.body.value)
+			}
+		}
+	}
+	if (tokens.variant === "expr") {
+		const expr = {variant:"expr"};
+		if (tokens.type === "BinOp") {
+			const binOp = {type: "BinOp", left: tokens.left};
+			if (tokens.op === "Add") {
+				return tokens;
+			}
+			if (tokens.op === "Sub") { // Negates the second one and then adds them
+				return {...expr, ...binOp, op: "Add", right: {...expr, type: "BinOp", left: {...expr, type: "Constant", value: {type: "integer", content: "-1"}}, right: tokens.right, op: "Mult"}};
+			}
+			if (tokens.op === "Mult") {
+				return tokens;
+			}
+		}
+		if (tokens.type === "UnaryOp") {
+			if (tokens.op === "UAdd") {
+				return tokens;
+			}
+			if (tokens.op === "USub") {
+				return {...expr, type: "BinOp", left: {...expr, type: "Constant", value: {type: "integer", content: "-1"}}, right: tokens.operand, op: "Mult"};
+			}
+		}
+		if (tokens.type === "Constant") {
+			return tokens;
+		}
+	}
+	throw "Cannot desugar unrecognized token variant";
+}
+
+function interp3(input) {
+	const desugaredTokens = desugar(getTokens(input));
+	return `(value ${interpretTokens(desugaredTokens)})`;
+}
+
 console.assert(sExpStr('a') === '{"type":"symbol","content":"a"}');
 console.assert(sExpStr('"a"') === '{"type":"string","content":"\\"a\\""}');
 console.assert(sExpStr('lance_meurs') === '{"type":"symbol","content":"lance_meurs"}');
@@ -281,4 +330,18 @@ console.assert(interp2("(BinOp [left (UnaryOp [op (USub)] [operand (Constant [va
 console.assert(interp2("(UnaryOp [op (USub)] [operand (Constant [value 4] [kind #f])])") === "(value -4)");
 console.assert(interp2(basicUnary) === "(value 0)");
 
-console.log(interp2(typeof process.argv[2] === "string" ? process.argv[2] : basicUnary)); // Project 2
+// console.log(interp2(typeof process.argv[2] === "string" ? process.argv[2] : basicUnary)); // Project 2
+
+// Constant
+console.assert(interp3("(Module [body ((Expr [value (Constant [value 5] [kind #f])]))] [type_ignores ()])") === "(value 5)");
+// Binaries
+console.assert(interp3("(BinOp [left (Constant [value 21] [kind #f])] [op (Add)] [right (Constant [value 47] [kind #f])])") === "(value 68)");
+console.assert(interp3("(BinOp [left (Constant [value 723] [kind #f])] [op (Sub)] [right (Constant [value 42] [kind #f])])") === "(value 681)");
+console.assert(interp3("(BinOp [left (Constant [value 12] [kind #f])] [op (Mult)] [right (Constant [value 4] [kind #f])])") === "(value 48)");
+// Combo
+console.assert(interp3("(BinOp [left (UnaryOp [op (USub)] [operand (Constant [value 4] [kind #f])])] [op (Mult)] [right (Constant [value 4] [kind #f])])") === "(value -16)");
+// Unaries
+console.assert(interp3("(UnaryOp [op (USub)] [operand (Constant [value 4] [kind #f])])") === "(value -4)");
+console.assert(interp3(basicUnary) === "(value 0)");
+
+console.log(interp3(typeof process.argv[2] === "string" ? process.argv[2] : basicUnary)); // Project 3
