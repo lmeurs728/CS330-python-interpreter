@@ -332,9 +332,22 @@ function uAdd(operand) {
 
 // Actual interpreter
 function interpretTokens(tokens) {
-	if (tokens.variant === "mod") {
-		const mainExpr = tokens.body.value;
+	if (tokens.variant === "mod") { // TODO
+		const func = interpretTokens(tokens.fundef);
+		const mainExpr = interpretTokens(tokens.expr_stmt);
 		return interpretTokens(mainExpr);
+	}
+	if (tokens.variant === "fundef") {
+		return tokens;
+	}
+	if (tokens.variant === "arguments") {
+		return tokens; //TODO
+	}
+	if (tokens.variant === "arg") {
+		return tokens; //TODO
+	}
+	if (tokens.variant === "Return") {
+		return tokens; //TODO
 	}
 	if (tokens.variant === "expr") {
 		if (tokens.type === "BinOp") {
@@ -362,6 +375,9 @@ function interpretTokens(tokens) {
 		if (tokens.type === "Constant") {
 			return Number(tokens.value.content);
 		}
+		if (tokens.type === "Call") {
+			return //TODO
+		}
 	}
 }
 
@@ -373,11 +389,29 @@ function interp2(input) {
 function desugar(tokens) {
 	if (tokens.variant === "mod") {
 		return {
-			variant: "mod", 
-			body: {
-				variant: "expr_stmt",
-				value: desugar(tokens.body.value)
-			}
+			variant: "mod",
+			fundef: desugar(tokens.fundef),
+			expr_stmt: desugar(tokens.expr_stmt),
+		}
+	}
+	if (tokens.variant === "fundef") {
+		return {
+			variant: "fundef",
+			name: tokens.name,
+			args: tokens.args,
+			body: desugar(tokens.body)
+		}
+	}
+	if (tokens.variant === "_arguments") {
+		return tokens;
+	}
+	if (tokens.variant === "_arg") {
+		return tokens;
+	}
+	if (tokens.variant === "return_stmt") {
+		return {
+			variant: "return_stmt",
+			value: desugar(tokens.value),
 		}
 	}
 	if (tokens.variant === "expr") {
@@ -402,9 +436,20 @@ function desugar(tokens) {
 				return {...expr, type: "BinOp", left: {...expr, type: "Constant", value: {type: "integer", content: "-1"}}, right: tokens.operand, op: "Mult"};
 			}
 		}
+		if (tokens.type === "Call") {
+			return {
+				variant: "expr",
+				type: "Call",
+				func: tokens.func,
+				args: desugar(tokens.args)
+			}
+		}
 		if (tokens.type === "Constant") {
 			return tokens;
 		}
+	}
+	if (tokens.variant === "name_expr") {
+		return tokens;
 	}
 	throw "Cannot desugar unrecognized token variant";
 }
