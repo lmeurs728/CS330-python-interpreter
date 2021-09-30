@@ -20,6 +20,10 @@ function verifyFalse(testWord) {
 	return /^#f.*$/.test(testWord);
 }
 
+function verifyEllipsis(testWord) {
+	return /^\.\.\..*$/.test(testWord);
+}
+
 function getAtom(input, i) {
 	const word = input.slice(i);
 	if (verifySymbol(word)) {
@@ -38,6 +42,9 @@ function getAtom(input, i) {
 	}
 	if (verifyFalse(word)) {
 		return {obj: {type: "false", content:  word.slice(0, 2)}, displacement: 2};
+	}
+	if (verifyEllipsis(word)) {
+		return {obj: {type: "ellipsis", content: word.slice(0, 3)}, displacement: 3};
 	}
 	throw "unexpected atom";
 }
@@ -108,12 +115,93 @@ function handleTokens(t) {
 			if (!(tokens[1].type === "list" && tokens[1].content[0].content === "body" && tokens[1].content[1].content)) {
 				throw "body syntax error";
 			}
+			if (!(tokens[1].content[1].content[0].content && tokens[1].content[1].content[1].content === "..." && tokens[1].content[1].content[2].content)) {
+				throw "fundef syntax error";
+			}
 			if (!(tokens[2].type === "list" && tokens[2].content[0].content === "type_ignores" && tokens[2].content[1].content.length === 0)) {
 				throw "type_ignores syntax error";
 			}
 			return {
 				variant: "mod",
-				body: handleTokens(tokens[1].content[1].content[0]),
+				fundef: handleTokens(tokens[1].content[1].content[0]),
+				expr_stmt: handleTokens(tokens[1].content[1].content[2]),
+			}
+		}
+		if (token.content === "FunctionDef") {
+			if (!(tokens[1].type === "list" && tokens[1].content[0].content === "name" && tokens[1].content[1])) {
+				throw "name syntax error";
+			}
+			if (!(tokens[2].type === "list" && tokens[2].content[0].content === "args" && tokens[2].content[1])) {
+				throw "args syntax error";
+			}
+			if (!(tokens[3].type === "list" && tokens[3].content[0].content === "body" && tokens[3].content[1])) {
+				throw "body syntax error";
+			}
+			if (!(tokens[4].type === "list" && tokens[4].content[0].content === "decorator_list" && tokens[4].content[1])) {
+				throw "decorator_list syntax error";
+			}
+			if (!(tokens[5].type === "list" && tokens[5].content[0].content === "returns" && tokens[5].content[1].content === "#f")) {
+				throw "returns syntax error";
+			}
+			if (!(tokens[6].type === "list" && tokens[6].content[0].content === "type_comment" && tokens[6].content[1].content === "#f")) {
+				throw "type_comment syntax error";
+			}
+			return {
+				variant: "fundef",
+				name: tokens[1].content[1].content,
+				args: handleTokens(tokens[2].content[1]),
+				body: handleTokens(tokens[3].content[1].content[0])
+			}
+		}
+		if (token.content === "arguments") {
+			if (!(tokens[1].type === "list" && tokens[1].content[0].content === "posonlyargs" && tokens[1].content[1])) {
+				throw "posonlyargs syntax error";
+			}
+			if (!(tokens[2].type === "list" && tokens[2].content[0].content === "args" && tokens[2].content[1])) {
+				throw "args syntax error";
+			}
+			if (!(tokens[3].type === "list" && tokens[3].content[0].content === "vararg" && tokens[3].content[1].content === "#f")) {
+				throw "vararg syntax error";
+			}
+			if (!(tokens[4].type === "list" && tokens[4].content[0].content === "kwonlyargs" && tokens[4].content[1])) {
+				throw "kwonlyargs syntax error";
+			}
+			if (!(tokens[5].type === "list" && tokens[5].content[0].content === "kw_defaults" && tokens[5].content[1])) {
+				throw "kw_defaults syntax error";
+			}
+			if (!(tokens[6].type === "list" && tokens[6].content[0].content === "kwarg" && tokens[6].content[1].content === "#f")) {
+				throw "kwarg syntax error";
+			}
+			if (!(tokens[7].type === "list" && tokens[7].content[0].content === "defaults" && tokens[7].content[1])) {
+				throw "defaults syntax error";
+			}
+			return {
+				variant: "_arguments",
+				args: handleTokens(tokens[2].content[1].content[0]),
+			}
+		}
+		if (token.content === "arg") {
+			if (!(tokens[1].type === "list" && tokens[1].content[0].content === "arg" && tokens[1].content[1])) {
+				throw "arg syntax error";
+			}
+			if (!(tokens[2].type === "list" && tokens[2].content[0].content === "annotation" && tokens[2].content[1].content === "#f")) {
+				throw "annotation syntax error";
+			}
+			if (!(tokens[3].type === "list" && tokens[3].content[0].content === "type_comment" && tokens[3].content[1].content === "#f")) {
+				throw "type_comment syntax error";
+			}
+			return {
+				variant: "_arg",
+				arg: tokens[1].content[1],
+			}
+		}
+		if (token.content === "Return") {
+			if (!(tokens[1].type === "list" && tokens[1].content[0].content === "value" && tokens[1].content[1])) {
+				throw "value syntax error";
+			}
+			return {
+				variant: "return_stmt",
+				value: handleTokens(tokens[1].content[1]),
 			}
 		}
 		if (token.content === "Expr") {
@@ -157,6 +245,23 @@ function handleTokens(t) {
 				operand: handleTokens(tokens[2].content[1]),
 			}
 		}
+		if (token.content === "Call") {
+			if (!(tokens[1].content[0].content === "func" && tokens[1].content[1])) {
+				throw "func syntax error";
+			}
+			if (!(tokens[2].content[0].content === "args" && tokens[2].content[1])) {
+				throw "args syntax error";
+			}
+			if (!(tokens[3].content[0].content === "keywords" && tokens[3].content[1])) {
+				throw "keywords syntax error";
+			}
+			return {
+				variant: "expr",
+				type: token.content,
+				func: handleTokens(tokens[1].content[1]),
+				args: handleTokens(tokens[2].content[1].content[0]),
+			}
+		}
 		if (token.content === "Constant") {
 			if (!(tokens[1].content[0].content === "value" && tokens[1].content[1])) {
 				throw "value syntax error";
@@ -168,6 +273,19 @@ function handleTokens(t) {
 				variant: "expr",
 				type: token.content,
 				value: tokens[1].content[1]
+			}
+		}
+		if (token.content === "Name") {
+			if (!(tokens[1].content[0].content === "id" && tokens[1].content[1])) {
+				throw "id syntax error";
+			}
+			if (!(tokens[2].content[0].content === "ctx" && tokens[2].content[1])) {
+				throw "ctx syntax error";
+			}
+			return {
+				variant: "name_expr",
+				type: token.content,
+				id: tokens[1].content[1].content,
 			}
 		}
 		return token.content;
@@ -296,52 +414,59 @@ function interp3(input) {
 	return `(value ${interpretTokens(desugaredTokens)})`;
 }
 
-console.assert(sExpStr('a') === '{"type":"symbol","content":"a"}');
-console.assert(sExpStr('"a"') === '{"type":"string","content":"\\"a\\""}');
-console.assert(sExpStr('lance_meurs') === '{"type":"symbol","content":"lance_meurs"}');
-console.assert(sExpStr('"my man"') === '{"type":"string","content":"\\"my man\\""}');
-console.assert(sExpStr('1') === '{"type":"integer","content":"1"}');
-console.assert(sExpStr('12345') === '{"type":"integer","content":"12345"}');
-console.assert(sExpStr('(a b c)') === '{"type":"list","content":[{"type":"symbol","content":"a"},{"type":"symbol","content":"b"},{"type":"symbol","content":"c"}]}');
-console.assert(sExpStr('((a b) c)') === '{"type":"list","content":[{"type":"list","content":[{"type":"symbol","content":"a"},{"type":"symbol","content":"b"}]},{"type":"symbol","content":"c"}]}');
-console.assert(sExpStr('(c (a b))') === '{"type":"list","content":[{"type":"symbol","content":"c"},{"type":"list","content":[{"type":"symbol","content":"a"},{"type":"symbol","content":"b"}]}]}');
-console.assert(sExpStr('((1) (2) 3)') === '{"type":"list","content":[{"type":"list","content":[{"type":"integer","content":"1"}]},{"type":"list","content":[{"type":"integer","content":"2"}]},{"type":"integer","content":"3"}]}');
-console.assert(sExpStr('(c (a b e) d)') === '{"type":"list","content":[{"type":"symbol","content":"c"},{"type":"list","content":[{"type":"symbol","content":"a"},{"type":"symbol","content":"b"},{"type":"symbol","content":"e"}]},{"type":"symbol","content":"d"}]}'); // This test case doesn't work
-console.assert(sExpStr('((a b (d)) (c))') === '{"type":"list","content":[{"type":"list","content":[{"type":"symbol","content":"a"},{"type":"symbol","content":"b"},{"type":"list","content":[{"type":"symbol","content":"d"}]}]},{"type":"list","content":[{"type":"symbol","content":"c"}]}]}');
+// console.assert(sExpStr('a') === '{"type":"symbol","content":"a"}');
+// console.assert(sExpStr('"a"') === '{"type":"string","content":"\\"a\\""}');
+// console.assert(sExpStr('lance_meurs') === '{"type":"symbol","content":"lance_meurs"}');
+// console.assert(sExpStr('"my man"') === '{"type":"string","content":"\\"my man\\""}');
+// console.assert(sExpStr('1') === '{"type":"integer","content":"1"}');
+// console.assert(sExpStr('12345') === '{"type":"integer","content":"12345"}');
+// console.assert(sExpStr('(a b c)') === '{"type":"list","content":[{"type":"symbol","content":"a"},{"type":"symbol","content":"b"},{"type":"symbol","content":"c"}]}');
+// console.assert(sExpStr('((a b) c)') === '{"type":"list","content":[{"type":"list","content":[{"type":"symbol","content":"a"},{"type":"symbol","content":"b"}]},{"type":"symbol","content":"c"}]}');
+// console.assert(sExpStr('(c (a b))') === '{"type":"list","content":[{"type":"symbol","content":"c"},{"type":"list","content":[{"type":"symbol","content":"a"},{"type":"symbol","content":"b"}]}]}');
+// console.assert(sExpStr('((1) (2) 3)') === '{"type":"list","content":[{"type":"list","content":[{"type":"integer","content":"1"}]},{"type":"list","content":[{"type":"integer","content":"2"}]},{"type":"integer","content":"3"}]}');
+// console.assert(sExpStr('(c (a b e) d)') === '{"type":"list","content":[{"type":"symbol","content":"c"},{"type":"list","content":[{"type":"symbol","content":"a"},{"type":"symbol","content":"b"},{"type":"symbol","content":"e"}]},{"type":"symbol","content":"d"}]}'); // This test case doesn't work
+// console.assert(sExpStr('((a b (d)) (c))') === '{"type":"list","content":[{"type":"list","content":[{"type":"symbol","content":"a"},{"type":"symbol","content":"b"},{"type":"list","content":[{"type":"symbol","content":"d"}]}]},{"type":"list","content":[{"type":"symbol","content":"c"}]}]}');
 
-const expected = '{"variant":"mod","body":{"variant":"expr_stmt","value":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"5"}}}}';
-console.assert(interp("(Module [body ((Expr [value (Constant [value 5] [kind #f])]))] [type_ignores ()])") === expected);
-const expected2 = '{"variant":"expr","type":"BinOp","left":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"5"}},"op":"Add","right":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"5"}}}';
-console.assert(interp("(BinOp [left (Constant [value 5] [kind #f])] [op (Add)] [right (Constant [value 5] [kind #f])])") === expected2);
-const basicUnary = "(UnaryOp [op (USub)] [operand (Constant [value 0] [kind #f])])";
-console.assert(interp(basicUnary) === '{"variant":"expr","type":"UnaryOp","op":"USub","operand":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"0"}}}');
+// const expected = '{"variant":"mod","body":{"variant":"expr_stmt","value":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"5"}}}}';
+// console.assert(interp("(Module [body ((Expr [value (Constant [value 5] [kind #f])]))] [type_ignores ()])") === expected);
+// const expected2 = '{"variant":"expr","type":"BinOp","left":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"5"}},"op":"Add","right":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"5"}}}';
+// console.assert(interp("(BinOp [left (Constant [value 5] [kind #f])] [op (Add)] [right (Constant [value 5] [kind #f])])") === expected2);
+// const basicUnary = "(UnaryOp [op (USub)] [operand (Constant [value 0] [kind #f])])";
+// console.assert(interp(basicUnary) === '{"variant":"expr","type":"UnaryOp","op":"USub","operand":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"0"}}}');
 
-// console.log(interp(typeof process.argv[2] === "string" ? process.argv[2] : basicUnary)); // Project 1
+// // console.log(interp(typeof process.argv[2] === "string" ? process.argv[2] : basicUnary)); // Project 1
 
-// Constant
-console.assert(interp2("(Module [body ((Expr [value (Constant [value 5] [kind #f])]))] [type_ignores ()])") === "(value 5)");
-// Binaries
-console.assert(interp2("(BinOp [left (Constant [value 21] [kind #f])] [op (Add)] [right (Constant [value 47] [kind #f])])") === "(value 68)");
-console.assert(interp2("(BinOp [left (Constant [value 723] [kind #f])] [op (Sub)] [right (Constant [value 42] [kind #f])])") === "(value 681)");
-console.assert(interp2("(BinOp [left (Constant [value 12] [kind #f])] [op (Mult)] [right (Constant [value 4] [kind #f])])") === "(value 48)");
-// Combo
-console.assert(interp2("(BinOp [left (UnaryOp [op (USub)] [operand (Constant [value 4] [kind #f])])] [op (Mult)] [right (Constant [value 4] [kind #f])])") === "(value -16)");
-// Unaries
-console.assert(interp2("(UnaryOp [op (USub)] [operand (Constant [value 4] [kind #f])])") === "(value -4)");
-console.assert(interp2(basicUnary) === "(value 0)");
+// // Constant
+// console.assert(interp2("(Module [body ((Expr [value (Constant [value 5] [kind #f])]))] [type_ignores ()])") === "(value 5)");
+// // Binaries
+// console.assert(interp2("(BinOp [left (Constant [value 21] [kind #f])] [op (Add)] [right (Constant [value 47] [kind #f])])") === "(value 68)");
+// console.assert(interp2("(BinOp [left (Constant [value 723] [kind #f])] [op (Sub)] [right (Constant [value 42] [kind #f])])") === "(value 681)");
+// console.assert(interp2("(BinOp [left (Constant [value 12] [kind #f])] [op (Mult)] [right (Constant [value 4] [kind #f])])") === "(value 48)");
+// // Combo
+// console.assert(interp2("(BinOp [left (UnaryOp [op (USub)] [operand (Constant [value 4] [kind #f])])] [op (Mult)] [right (Constant [value 4] [kind #f])])") === "(value -16)");
+// // Unaries
+// console.assert(interp2("(UnaryOp [op (USub)] [operand (Constant [value 4] [kind #f])])") === "(value -4)");
+// console.assert(interp2(basicUnary) === "(value 0)");
 
-// console.log(interp2(typeof process.argv[2] === "string" ? process.argv[2] : basicUnary)); // Project 2
+// // console.log(interp2(typeof process.argv[2] === "string" ? process.argv[2] : basicUnary)); // Project 2
 
-// Constant
-console.assert(interp3("(Module [body ((Expr [value (Constant [value 5] [kind #f])]))] [type_ignores ()])") === "(value 5)");
-// Binaries
-console.assert(interp3("(BinOp [left (Constant [value 21] [kind #f])] [op (Add)] [right (Constant [value 47] [kind #f])])") === "(value 68)");
-console.assert(interp3("(BinOp [left (Constant [value 723] [kind #f])] [op (Sub)] [right (Constant [value 42] [kind #f])])") === "(value 681)");
+// // Constant
+// console.assert(interp3("(Module [body ((Expr [value (Constant [value 5] [kind #f])]))] [type_ignores ()])") === "(value 5)");
+// // Binaries
+// console.assert(interp3("(BinOp [left (Constant [value 21] [kind #f])] [op (Add)] [right (Constant [value 47] [kind #f])])") === "(value 68)");
+// console.assert(interp3("(BinOp [left (Constant [value 723] [kind #f])] [op (Sub)] [right (Constant [value 42] [kind #f])])") === "(value 681)");
 console.assert(interp3("(BinOp [left (Constant [value 12] [kind #f])] [op (Mult)] [right (Constant [value 4] [kind #f])])") === "(value 48)");
-// Combo
-console.assert(interp3("(BinOp [left (UnaryOp [op (USub)] [operand (Constant [value 4] [kind #f])])] [op (Mult)] [right (Constant [value 4] [kind #f])])") === "(value -16)");
-// Unaries
-console.assert(interp3("(UnaryOp [op (USub)] [operand (Constant [value 4] [kind #f])])") === "(value -4)");
-console.assert(interp3(basicUnary) === "(value 0)");
+// // Combo
+// console.assert(interp3("(BinOp [left (UnaryOp [op (USub)] [operand (Constant [value 4] [kind #f])])] [op (Mult)] [right (Constant [value 4] [kind #f])])") === "(value -16)");
+// // Unaries
+// console.assert(interp3("(UnaryOp [op (USub)] [operand (Constant [value 4] [kind #f])])") === "(value -4)");
+// console.assert(interp3(basicUnary) === "(value 0)");
 
-console.log(interp3(typeof process.argv[2] === "string" ? process.argv[2] : basicUnary)); // Project 3
+// console.log(interp3(typeof process.argv[2] === "string" ? process.argv[2] : basicUnary)); // Project 3
+
+// const expected = '{"variant":"mod","body":{"variant":"expr_stmt","value":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"5"}}}}';
+console.log(interp('(Module [body ((FunctionDef [name "Lance"] [args (arguments [posonlyargs ()] [args ((arg [arg "myArg"]' +
+	' [annotation #f] [type_comment #f]))] [vararg #f] [kwonlyargs ()] [kw_defaults ()] [kwarg #f] [defaults ()])]' + 
+	' [body ((Return [value (Name [id "myArg"] [ctx (Load)])]))] [decorator_list ()] [returns #f] [type_comment #f]) ...' +
+	' (Expr [value (Call [func (Name [id "Lance"] [ctx (Load)])] [args ((Constant [value 4] [kind #f]))] [keywords ()])]))] [type_ignores ()])')
+);
