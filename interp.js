@@ -209,7 +209,7 @@ function handleTokens(t) {
 				throw "value syntax error";
 			}
 			return {
-				variant: "expr_stmt",
+				variant: "expr",
 				value: handleTokens(tokens[1].content[1])
 			}
 		}
@@ -330,29 +330,31 @@ function uAdd(operand) {
 	return +operand;
 }
 
+function createFunc(def) {
+	return {
+		ret: () => def.body.value, // value is an expression
+		argName: def.args.args.arg.content,
+	}
+}
+
+// TODO: Add functionality for 0 - infinite functions
+
 // Actual interpreter
-function interpretTokens(tokens) {
-	if (tokens.variant === "mod") { // TODO
-		const func = interpretTokens(tokens.fundef);
-		const mainExpr = interpretTokens(tokens.expr_stmt);
-		return interpretTokens(mainExpr);
-	}
-	if (tokens.variant === "fundef") {
-		return tokens;
-	}
-	if (tokens.variant === "arguments") {
-		return tokens; //TODO
-	}
-	if (tokens.variant === "arg") {
-		return tokens; //TODO
-	}
-	if (tokens.variant === "Return") {
-		return tokens; //TODO
+function interpretTokens(tokens, scope) {
+	if (tokens.variant === "mod") {
+		newScope = {
+			variables: scope.variables,
+			functions: {
+				[tokens.fundef.name]: createFunc(tokens.fundef),
+				...scope.functions
+			}
+		}
+		return interpretTokens(tokens.expr_stmt, newScope);
 	}
 	if (tokens.variant === "expr") {
 		if (tokens.type === "BinOp") {
-			const left = interpretTokens(tokens.left);
-			const right = interpretTokens(tokens.right);
+			const left = interpretTokens(tokens.left, scope);
+			const right = interpretTokens(tokens.right, scope);
 			if (tokens.op === "Add") {
 				return add(left, right);
 			}
@@ -364,7 +366,7 @@ function interpretTokens(tokens) {
 			}
 		}
 		if (tokens.type === "UnaryOp") {
-			const operand = interpretTokens(tokens.operand);
+			const operand = interpretTokens(tokens.operand, scope);
 			if (tokens.op === "UAdd") {
 				return uAdd(operand);
 			}
@@ -372,12 +374,30 @@ function interpretTokens(tokens) {
 				return uSub(operand);
 			}
 		}
+		if (tokens.type === "Call") {
+			const funcName = tokens.func.id;
+			if (!scope.functions[funcName]) {
+				throw '(error dynamic "unknown function")';
+			}
+			scope.variables[scope.functions[funcName].argName] = interpretTokens(tokens.args, scope)
+			newScope = {
+				variables: {
+					[scope.functions[funcName].argName]: interpretTokens(tokens.args, scope),
+					...scope.variables
+				},
+				functions: scope.functions
+			}
+			return interpretTokens(scope.functions[funcName].ret(), newScope);
+		}
 		if (tokens.type === "Constant") {
 			return Number(tokens.value.content);
 		}
-		if (tokens.type === "Call") {
-			return //TODO
+	}
+	if (tokens.variant === "name_expr") {
+		if (!scope.variables[tokens.id]) {
+			throw '(error dynamic "unbound variable")';
 		}
+		return scope.variables[tokens.id]; // Return whatever value we have for that id in the lookup table
 	}
 }
 
@@ -391,7 +411,7 @@ function desugar(tokens) {
 		return {
 			variant: "mod",
 			fundef: desugar(tokens.fundef),
-			expr_stmt: desugar(tokens.expr_stmt),
+			expr_stmt: desugar(tokens.expr_stmt.value),
 		}
 	}
 	if (tokens.variant === "fundef") {
@@ -456,7 +476,11 @@ function desugar(tokens) {
 
 function interp3(input) {
 	const desugaredTokens = desugar(getTokens(input));
-	return `(value ${interpretTokens(desugaredTokens)})`;
+	const initialEnv = {
+		functions: {},
+		variables: {},
+	};
+	return `(value ${interpretTokens(desugaredTokens, initialEnv)})`;
 }
 
 // console.assert(sExpStr('a') === '{"type":"symbol","content":"a"}');
@@ -510,8 +534,8 @@ console.assert(interp3("(BinOp [left (Constant [value 12] [kind #f])] [op (Mult)
 // console.log(interp3(typeof process.argv[2] === "string" ? process.argv[2] : basicUnary)); // Project 3
 
 // const expected = '{"variant":"mod","body":{"variant":"expr_stmt","value":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"5"}}}}';
-console.log(interp('(Module [body ((FunctionDef [name "Lance"] [args (arguments [posonlyargs ()] [args ((arg [arg "myArg"]' +
+console.log(interp3('(Module [body ((FunctionDef [name Lance] [args (arguments [posonlyargs ()] [args ((arg [arg myArg]' +
 	' [annotation #f] [type_comment #f]))] [vararg #f] [kwonlyargs ()] [kw_defaults ()] [kwarg #f] [defaults ()])]' + 
-	' [body ((Return [value (Name [id "myArg"] [ctx (Load)])]))] [decorator_list ()] [returns #f] [type_comment #f]) ...' +
-	' (Expr [value (Call [func (Name [id "Lance"] [ctx (Load)])] [args ((Constant [value 4] [kind #f]))] [keywords ()])]))] [type_ignores ()])')
+	' [body ((Return [value (Name [id myArg] [ctx (Load)])]))] [decorator_list ()] [returns #f] [type_comment #f]) ...' +
+	' (Expr [value (Call [func (Name [id Lance] [ctx (Load)])] [args ((Constant [value 4] [kind #f]))] [keywords ()])]))] [type_ignores ()])')
 );
