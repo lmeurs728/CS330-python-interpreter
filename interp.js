@@ -20,10 +20,6 @@ function verifyFalse(testWord) {
 	return /^#f.*$/.test(testWord);
 }
 
-function verifyEllipsis(testWord) {
-	return /^\.\.\..*$/.test(testWord);
-}
-
 function getAtom(input, i) {
 	const word = input.slice(i);
 	if (verifySymbol(word)) {
@@ -42,9 +38,6 @@ function getAtom(input, i) {
 	}
 	if (verifyFalse(word)) {
 		return {obj: {type: "false", content:  word.slice(0, 2)}, displacement: 2};
-	}
-	if (verifyEllipsis(word)) {
-		return {obj: {type: "ellipsis", content: word.slice(0, 3)}, displacement: 3};
 	}
 	throw "unexpected atom";
 }
@@ -115,16 +108,24 @@ function handleTokens(t) {
 			if (!(tokens[1].type === "list" && tokens[1].content[0].content === "body" && tokens[1].content[1].content)) {
 				throw "body syntax error";
 			}
-			if (!(tokens[1].content[1].content[0].content && tokens[1].content[1].content[1].content === "..." && tokens[1].content[1].content[2].content)) {
+			const listLen =  tokens[1].content[1].content.length;
+			if (!(tokens[1].content[1].content[0].content && tokens[1].content[1].content[listLen - 1].content)) {
 				throw "fundef syntax error";
 			}
 			if (!(tokens[2].type === "list" && tokens[2].content[0].content === "type_ignores" && tokens[2].content[1].content.length === 0)) {
 				throw "type_ignores syntax error";
 			}
+			const fundefs = tokens[1].content[1].content.map(func => {
+				return handleTokens(func);
+			});
+			const hasDuplicate = fundefs.some((val, i) => fundefs.map(fundef => fundef.name).indexOf(val.name) !== i);
+			if (hasDuplicate) {
+				throw `(error static "duplicate function name")`;
+			}
 			return {
 				variant: "mod",
-				fundef: handleTokens(tokens[1].content[1].content[0]),
-				expr_stmt: handleTokens(tokens[1].content[1].content[2]),
+				fundefs: fundefs.slice(0, listLen - 1),
+				expr_stmt: fundefs[listLen - 1],
 			}
 		}
 		if (token.content === "FunctionDef") {
@@ -344,10 +345,11 @@ function interpretTokens(tokens, scope) {
 	if (tokens.variant === "mod") {
 		newScope = {
 			variables: scope.variables,
-			functions: {
-				[tokens.fundef.name]: createFunc(tokens.fundef),
-				...scope.functions
-			}
+			functions: tokens.fundefs.reduce((o, fundef) => ({
+				...o,
+				[fundef.name]: createFunc(fundef)
+			}),
+			{...scope.functions})
 		}
 		return interpretTokens(tokens.expr_stmt, newScope);
 	}
@@ -410,7 +412,7 @@ function desugar(tokens) {
 	if (tokens.variant === "mod") {
 		return {
 			variant: "mod",
-			fundef: desugar(tokens.fundef),
+			fundefs: tokens.fundefs.map(fundef => desugar(fundef)),
 			expr_stmt: desugar(tokens.expr_stmt.value),
 		}
 	}
@@ -475,12 +477,17 @@ function desugar(tokens) {
 }
 
 function interp3(input) {
-	const desugaredTokens = desugar(getTokens(input));
-	const initialEnv = {
-		functions: {},
-		variables: {},
-	};
-	return `(value ${interpretTokens(desugaredTokens, initialEnv)})`;
+	try {
+		const desugaredTokens = desugar(getTokens(input));
+		const initialEnv = {
+			functions: {},
+			variables: {},
+		};
+		return `(value ${interpretTokens(desugaredTokens, initialEnv)})`;
+	}
+	catch(e) {
+		return e;
+	}
 }
 
 // console.assert(sExpStr('a') === '{"type":"symbol","content":"a"}');
@@ -500,7 +507,7 @@ function interp3(input) {
 // console.assert(interp("(Module [body ((Expr [value (Constant [value 5] [kind #f])]))] [type_ignores ()])") === expected);
 // const expected2 = '{"variant":"expr","type":"BinOp","left":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"5"}},"op":"Add","right":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"5"}}}';
 // console.assert(interp("(BinOp [left (Constant [value 5] [kind #f])] [op (Add)] [right (Constant [value 5] [kind #f])])") === expected2);
-// const basicUnary = "(UnaryOp [op (USub)] [operand (Constant [value 0] [kind #f])])";
+const basicUnary = "(UnaryOp [op (USub)] [operand (Constant [value 0] [kind #f])])";
 // console.assert(interp(basicUnary) === '{"variant":"expr","type":"UnaryOp","op":"USub","operand":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"0"}}}');
 
 // // console.log(interp(typeof process.argv[2] === "string" ? process.argv[2] : basicUnary)); // Project 1
@@ -524,18 +531,62 @@ function interp3(input) {
 // // Binaries
 // console.assert(interp3("(BinOp [left (Constant [value 21] [kind #f])] [op (Add)] [right (Constant [value 47] [kind #f])])") === "(value 68)");
 // console.assert(interp3("(BinOp [left (Constant [value 723] [kind #f])] [op (Sub)] [right (Constant [value 42] [kind #f])])") === "(value 681)");
-console.assert(interp3("(BinOp [left (Constant [value 12] [kind #f])] [op (Mult)] [right (Constant [value 4] [kind #f])])") === "(value 48)");
+//console.assert(interp3("(BinOp [left (Constant [value 12] [kind #f])] [op (Mult)] [right (Constant [value 4] [kind #f])])") === "(value 48)");
 // // Combo
 // console.assert(interp3("(BinOp [left (UnaryOp [op (USub)] [operand (Constant [value 4] [kind #f])])] [op (Mult)] [right (Constant [value 4] [kind #f])])") === "(value -16)");
 // // Unaries
 // console.assert(interp3("(UnaryOp [op (USub)] [operand (Constant [value 4] [kind #f])])") === "(value -4)");
 // console.assert(interp3(basicUnary) === "(value 0)");
 
-// console.log(interp3(typeof process.argv[2] === "string" ? process.argv[2] : basicUnary)); // Project 3
+console.log(interp3(typeof process.argv[2] === "string" ? process.argv[2] : basicUnary)); // Project 3
 
 // const expected = '{"variant":"mod","body":{"variant":"expr_stmt","value":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"5"}}}}';
-console.log(interp3('(Module [body ((FunctionDef [name Lance] [args (arguments [posonlyargs ()] [args ((arg [arg myArg]' +
+
+// Zero functions
+console.assert(interp3('(Module [body ((Expr [value (Constant [value 7] [kind #f])]))] [type_ignores ()])') === '(value 7)');
+
+// One function
+console.assert(interp3('(Module [body ((FunctionDef [name Lance] [args (arguments [posonlyargs ()] [args ((arg [arg myArg]' +
 	' [annotation #f] [type_comment #f]))] [vararg #f] [kwonlyargs ()] [kw_defaults ()] [kwarg #f] [defaults ()])]' + 
-	' [body ((Return [value (Name [id myArg] [ctx (Load)])]))] [decorator_list ()] [returns #f] [type_comment #f]) ...' +
+	' [body ((Return [value (Name [id myArg] [ctx (Load)])]))] [decorator_list ()] [returns #f] [type_comment #f])' +
 	' (Expr [value (Call [func (Name [id Lance] [ctx (Load)])] [args ((Constant [value 4] [kind #f]))] [keywords ()])]))] [type_ignores ()])')
+	=== '(value 4)'
+);
+
+// Unknown Function
+console.assert(interp3('(Module [body ((FunctionDef [name Lance] [args (arguments [posonlyargs ()] [args ((arg [arg myArg]' +
+	' [annotation #f] [type_comment #f]))] [vararg #f] [kwonlyargs ()] [kw_defaults ()] [kwarg #f] [defaults ()])]' + 
+	' [body ((Return [value (Name [id myArg] [ctx (Load)])]))] [decorator_list ()] [returns #f] [type_comment #f])' +
+	' (Expr [value (Call [func (Name [id Yolo] [ctx (Load)])] [args ((Constant [value 4] [kind #f]))] [keywords ()])]))] [type_ignores ()])')
+	=== '(error dynamic "unknown function")'
+);
+
+// Unbound Variable
+console.assert(interp3('(Module [body ((FunctionDef [name Lance] [args (arguments [posonlyargs ()] [args ((arg [arg myArg]' +
+	' [annotation #f] [type_comment #f]))] [vararg #f] [kwonlyargs ()] [kw_defaults ()] [kwarg #f] [defaults ()])]' + 
+	' [body ((Return [value (Name [id yolo] [ctx (Load)])]))] [decorator_list ()] [returns #f] [type_comment #f])' +
+	' (Expr [value (Call [func (Name [id Lance] [ctx (Load)])] [args ((Constant [value 4] [kind #f]))] [keywords ()])]))] [type_ignores ()])')
+	=== '(error dynamic "unbound variable")'
+);
+
+// Duplicate Function Name
+console.assert(interp3('(Module [body ((FunctionDef [name Lance] [args (arguments [posonlyargs ()] [args ((arg [arg myArg]' +
+	' [annotation #f] [type_comment #f]))] [vararg #f] [kwonlyargs ()] [kw_defaults ()] [kwarg #f] [defaults ()])]' + 
+	' [body ((Return [value (Name [id myArg] [ctx (Load)])]))] [decorator_list ()] [returns #f] [type_comment #f])' +
+	' (FunctionDef [name Lance] [args (arguments [posonlyargs ()] [args ((arg [arg myArg]' +
+	' [annotation #f] [type_comment #f]))] [vararg #f] [kwonlyargs ()] [kw_defaults ()] [kwarg #f] [defaults ()])]' + 
+	' [body ((Return [value (Name [id myArg] [ctx (Load)])]))] [decorator_list ()] [returns #f] [type_comment #f])' +
+	' (Expr [value (Call [func (Name [id Lance] [ctx (Load)])] [args ((Constant [value 4] [kind #f]))] [keywords ()])]))] [type_ignores ()])') 
+	=== '(error static "duplicate function name")'
+);
+
+// Two Functions
+console.assert(interp3('(Module [body ((FunctionDef [name Lance] [args (arguments [posonlyargs ()] [args ((arg [arg myArg]' +
+	' [annotation #f] [type_comment #f]))] [vararg #f] [kwonlyargs ()] [kw_defaults ()] [kwarg #f] [defaults ()])]' + 
+	' [body ((Return [value (Name [id myArg] [ctx (Load)])]))] [decorator_list ()] [returns #f] [type_comment #f])' +
+	' (FunctionDef [name Meurs] [args (arguments [posonlyargs ()] [args ((arg [arg myArg]' +
+	' [annotation #f] [type_comment #f]))] [vararg #f] [kwonlyargs ()] [kw_defaults ()] [kwarg #f] [defaults ()])]' + 
+	' [body ((Return [value (Call [func (Name [id Lance] [ctx (Load)])] [args ((Name [id myArg] [ctx (Load)]))] [keywords ()])]))] [decorator_list ()] [returns #f] [type_comment #f])' +
+	' (Expr [value (Call [func (Name [id Lance] [ctx (Load)])] [args ((Constant [value 5] [kind #f]))] [keywords ()])]))] [type_ignores ()])') 
+	=== '(value 5)'
 );
