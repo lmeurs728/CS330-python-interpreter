@@ -176,9 +176,12 @@ function handleTokens(t) {
 			if (!(tokens[7].type === "list" && tokens[7].content[0].content === "defaults" && tokens[7].content[1])) {
 				throw "defaults syntax error";
 			}
+			const args = tokens[2].content[1].content.map(arg => {
+				return handleTokens(arg);
+			});
 			return {
 				variant: "_arguments",
-				args: handleTokens(tokens[2].content[1].content[0]),
+				args: args,
 			}
 		}
 		if (token.content === "arg") {
@@ -256,11 +259,14 @@ function handleTokens(t) {
 			if (!(tokens[3].content[0].content === "keywords" && tokens[3].content[1])) {
 				throw "keywords syntax error";
 			}
+			const args = tokens[2].content[1].content.map(arg => {
+				return handleTokens(arg);
+			});
 			return {
 				variant: "expr",
 				type: token.content,
 				func: handleTokens(tokens[1].content[1]),
-				args: handleTokens(tokens[2].content[1].content[0]),
+				args: args, 
 			}
 		}
 		if (token.content === "Constant") {
@@ -334,7 +340,7 @@ function uAdd(operand) {
 function createFunc(def) {
 	return {
 		ret: () => def.body.value, // value is an expression
-		argName: def.args.args.arg.content,
+		argNames: def.args.args.map(arg => arg.arg.content),
 	}
 }
 
@@ -381,12 +387,15 @@ function interpretTokens(tokens, scope) {
 			if (!scope.functions[funcName]) {
 				throw '(error dynamic "unknown function")';
 			}
-			scope.variables[scope.functions[funcName].argName] = interpretTokens(tokens.args, scope)
+			// Loop through our function's arguments and 
+			// assign each one to the expression in order
+			// We need to make a variables object
+
 			newScope = {
-				variables: {
-					[scope.functions[funcName].argName]: interpretTokens(tokens.args, scope),
-					...scope.variables
-				},
+				variables: scope.functions[funcName].argNames.reduce((o, argName, i) => ({
+					...o,
+					[argName]: interpretTokens(tokens.args[i], scope)
+				}), scope.variables),
 				functions: scope.functions
 			}
 			return interpretTokens(scope.functions[funcName].ret(), newScope);
@@ -463,7 +472,7 @@ function desugar(tokens) {
 				variant: "expr",
 				type: "Call",
 				func: tokens.func,
-				args: desugar(tokens.args)
+				args: tokens.args.map(arg => desugar(arg))
 			}
 		}
 		if (tokens.type === "Constant") {
@@ -538,9 +547,19 @@ const basicUnary = "(UnaryOp [op (USub)] [operand (Constant [value 0] [kind #f])
 // console.assert(interp3("(UnaryOp [op (USub)] [operand (Constant [value 4] [kind #f])])") === "(value -4)");
 // console.assert(interp3(basicUnary) === "(value 0)");
 
-console.log(interp3(typeof process.argv[2] === "string" ? process.argv[2] : basicUnary)); // Project 3
+const readline  = require("readline")
+var rl = readline.createInterface({
+	input: process.stdin,
+	output: process.stdout,
+	terminal: false
+});
+rl.on('line', function(line){
+    console.log(interp3(typeof line === "string" ? line : basicUnary)); // Project 3
+})
 
-// const expected = '{"variant":"mod","body":{"variant":"expr_stmt","value":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"5"}}}}';
+
+
+// const expected = '{"variant":"mod","body":{"variant":"expr_stmt","value":{"variant":"expr","type":"Constant","value":{"type":"integer","content":"5"}}}}'; 
 
 // Zero functions
 console.assert(interp3('(Module [body ((Expr [value (Constant [value 7] [kind #f])]))] [type_ignores ()])') === '(value 7)');
@@ -589,4 +608,12 @@ console.assert(interp3('(Module [body ((FunctionDef [name Lance] [args (argument
 	' [body ((Return [value (Call [func (Name [id Lance] [ctx (Load)])] [args ((Name [id myArg] [ctx (Load)]))] [keywords ()])]))] [decorator_list ()] [returns #f] [type_comment #f])' +
 	' (Expr [value (Call [func (Name [id Lance] [ctx (Load)])] [args ((Constant [value 5] [kind #f]))] [keywords ()])]))] [type_ignores ()])') 
 	=== '(value 5)'
+);
+
+// Two args
+console.assert(interp3('(Module [body ((FunctionDef [name Lance] [args (arguments [posonlyargs ()] [args ((arg [arg myArg]' +
+	' [annotation #f] [type_comment #f]) (arg [arg myArg2] [annotation #f] [type_comment #f]))] [vararg #f] [kwonlyargs ()] [kw_defaults ()] [kwarg #f] [defaults ()])]' + 
+	' [body ((Return [value (Name [id myArg] [ctx (Load)])]))] [decorator_list ()] [returns #f] [type_comment #f])' +
+	' (Expr [value (Call [func (Name [id Lance] [ctx (Load)])] [args ((Constant [value 4] [kind #f]) (Constant [value 6] [kind #f]))] [keywords ()])]))] [type_ignores ()])')
+	=== '(value 4)'
 );
