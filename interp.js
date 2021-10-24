@@ -100,6 +100,11 @@ function sExpStr(input) {
 	return JSON.stringify(parse(input));
 }
 
+let hasDuplicate = (arr) => {
+	var valueArr = arr.map(item => item.arg.content);
+	return valueArr.some((item, idx) => valueArr.indexOf(item) != idx);
+}
+
 function handleTokens(t) {
 	const tokens = t.content;
 	const token = tokens[0];
@@ -179,6 +184,9 @@ function handleTokens(t) {
 			const args = tokens[2].content[1].content.map(arg => {
 				return handleTokens(arg);
 			});
+			if (hasDuplicate(args)) {
+				throw '(error static "duplicate parameter")';
+			}
 			return {
 				variant: "_arguments",
 				args: args,
@@ -392,10 +400,15 @@ function interpretTokens(tokens, scope) {
 			// We need to make a variables object
 
 			newScope = {
-				variables: scope.functions[funcName].argNames.reduce((o, argName, i) => ({
-					...o,
-					[argName]: interpretTokens(tokens.args[i], scope)
-				}), scope.variables),
+				variables: scope.functions[funcName].argNames.reduce((o, argName, i) => {
+					if (!tokens.args[i]) {
+						throw '(error dynamic "arity mismatch")'
+					}
+					return {
+						...o,
+						[argName]: interpretTokens(tokens.args[i], scope)
+					}
+				}, scope.variables),
 				functions: scope.functions
 			}
 			return interpretTokens(scope.functions[funcName].ret(), newScope);
