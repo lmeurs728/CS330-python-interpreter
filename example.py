@@ -2,9 +2,13 @@
 # works in powershell but not bash
 
 def f(g):
-  def lance(myArg):
+  def plants(myArg):
     return myArg + 7
-  return lance(g(42))
 
-f(lambda x: x)
+  def animals(arr):
+    return arr - 16
+
+  return animals(plants(g(42)))
+
+f(lambda x: x + 1)
 

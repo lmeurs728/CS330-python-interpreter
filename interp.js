@@ -372,9 +372,16 @@ function uAdd(operand) {
 }
 
 function createFunc(def) {
-	return {
-		ret: () => def.body.value, // value is an expression
-		argNames: def.args.args.map(arg => arg.arg.content),
+	return { 
+		[def.name]: {
+			ret: () => def.body.value, // value is an expression
+			argNames: def.args.args.map(arg => arg.arg.content),
+			childFunctions: def.fundefs.reduce((o, fundef) => ({
+				...o,
+				...createFunc(fundef)
+			}),
+			{})
+		} 
 	}
 }
 
@@ -388,9 +395,9 @@ function createLambda(token) {
 // Actual interpreter
 function interpretTokens(tokens, scope) {
 	if (tokens.variant === "mod") {
-		newScope = tokens.fundefs.reduce((o, fundef) => ({
+		const newScope = tokens.fundefs.reduce((o, fundef) => ({
 				...o,
-				[fundef.name]: createFunc(fundef)
+				...createFunc(fundef)
 			}),
 			scope)
 		
@@ -434,16 +441,15 @@ function interpretTokens(tokens, scope) {
 			if (typeof func?.ret !== "function") {
 				throw '(error dynamic "not a function")';
 			}
-
-			newScope =  func.argNames.reduce((o, argName, i) => {
+			const newScope = func.argNames.reduce((o, argName, i) => {
 				if (!tokens.args[i]) {
 					throw '(error dynamic "arity mismatch")'
 				}
 				return {
 					...o,
-					[argName]: interpretTokens(tokens.args[i], scope)
+					[argName]: interpretTokens(tokens.args[i], o)
 				}
-			}, scope)
+			}, {...scope, ...func.childFunctions})
 			
 			return interpretTokens(func.ret(), newScope);
 		}
@@ -481,6 +487,7 @@ function desugar(tokens) {
 			variant: "fundef",
 			name: tokens.name,
 			args: tokens.args,
+			fundefs: tokens.fundefs.map(fundef => desugar(fundef)),
 			body: desugar(tokens.body)
 		}
 	}
