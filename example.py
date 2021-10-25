@@ -1,7 +1,10 @@
 # cat .\example.py | python .\parse.py | node .\interp.js 
 # works in powershell but not bash
-def g(lance, lance2):
 
-  return lance + lance2
+def f(g):
+  def lance(myArg):
+    return myArg + 7
+  return lance(g(42))
 
-g(20, 22)
+f(lambda x: x)
+

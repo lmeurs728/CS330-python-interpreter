@@ -1,3 +1,5 @@
+let testingFromStdin = false;
+
 function verifySymbol(testWord) {
 	if (!(/^\w+.*$/.test(testWord))) {
 		return false;
@@ -100,9 +102,19 @@ function sExpStr(input) {
 	return JSON.stringify(parse(input));
 }
 
-let hasDuplicate = (arr) => {
-	var valueArr = arr.map(item => item.arg.content);
-	return valueArr.some((item, idx) => valueArr.indexOf(item) != idx);
+function handleBody(funs) {
+	const listLen =  funs.length;
+	const fundefs = funs.map(func => {
+		return handleTokens(func);
+	});
+	const hasDuplicate = fundefs.some((val, i) => fundefs.map(fundef => fundef.name).indexOf(val.name) !== i);
+	if (hasDuplicate) {
+		throw `(error static "duplicate function name")`;
+	}
+	return {
+		fundefs: fundefs.slice(0, listLen - 1),
+		expr_stmt: fundefs[listLen - 1],
+	}
 }
 
 function handleTokens(t) {
@@ -120,17 +132,11 @@ function handleTokens(t) {
 			if (!(tokens[2].type === "list" && tokens[2].content[0].content === "type_ignores" && tokens[2].content[1].content.length === 0)) {
 				throw "type_ignores syntax error";
 			}
-			const fundefs = tokens[1].content[1].content.map(func => {
-				return handleTokens(func);
-			});
-			const hasDuplicate = fundefs.some((val, i) => fundefs.map(fundef => fundef.name).indexOf(val.name) !== i);
-			if (hasDuplicate) {
-				throw `(error static "duplicate function name")`;
-			}
+			const bodyVals = handleBody(tokens[1].content[1].content);
 			return {
 				variant: "mod",
-				fundefs: fundefs.slice(0, listLen - 1),
-				expr_stmt: fundefs[listLen - 1],
+				fundefs: bodyVals.fundefs,
+				expr_stmt: bodyVals.expr_stmt,
 			}
 		}
 		if (token.content === "FunctionDef") {
@@ -152,11 +158,13 @@ function handleTokens(t) {
 			if (!(tokens[6].type === "list" && tokens[6].content[0].content === "type_comment" && tokens[6].content[1].content === "#f")) {
 				throw "type_comment syntax error";
 			}
+			const bodyVals = handleBody(tokens[3].content[1].content);
 			return {
 				variant: "fundef",
 				name: tokens[1].content[1].content,
 				args: handleTokens(tokens[2].content[1]),
-				body: handleTokens(tokens[3].content[1].content[0])
+				fundefs: bodyVals.fundefs,
+				body: bodyVals.expr_stmt
 			}
 		}
 		if (token.content === "arguments") {
@@ -184,7 +192,8 @@ function handleTokens(t) {
 			const args = tokens[2].content[1].content.map(arg => {
 				return handleTokens(arg);
 			});
-			if (hasDuplicate(args)) {
+			const hasDuplicate = args.some((val, i) => args.map(item => item.arg.content).indexOf(val.arg.content) != i);
+			if (hasDuplicate) {
 				throw '(error static "duplicate parameter")';
 			}
 			return {
@@ -298,9 +307,26 @@ function handleTokens(t) {
 				throw "ctx syntax error";
 			}
 			return {
-				variant: "name_expr",
+				variant: "expr",
 				type: token.content,
 				id: tokens[1].content[1].content,
+			}
+		}
+		if (token.content === "Lambda") {
+			if (!(tokens[1].content[0].content === "args" && tokens[1].content[1])) {
+				throw "args syntax error";
+			}
+			if (!(tokens[2].content[0].content === "body" && tokens[2].content[1])) {
+				throw "body syntax error";
+			}
+			const args = tokens[1].content[1].content[2].content[1].content.map(arg => {
+				return handleTokens(arg);
+			});
+			return {
+				variant: "expr",
+				type: token.content,
+				args: args,
+				body: handleTokens(tokens[2].content[1]),
 			}
 		}
 		return token.content;
@@ -352,25 +378,31 @@ function createFunc(def) {
 	}
 }
 
-// TODO: Add functionality for 0 - infinite functions
+function createLambda(token) {
+	return {
+		ret: () => token.body, // body is an expression
+		argNames: token.args.map(arg => arg.arg.content),
+	}
+}
 
 // Actual interpreter
 function interpretTokens(tokens, scope) {
 	if (tokens.variant === "mod") {
-		newScope = {
-			variables: scope.variables,
-			functions: tokens.fundefs.reduce((o, fundef) => ({
+		newScope = tokens.fundefs.reduce((o, fundef) => ({
 				...o,
 				[fundef.name]: createFunc(fundef)
 			}),
-			{...scope.functions})
-		}
+			scope)
+		
 		return interpretTokens(tokens.expr_stmt, newScope);
 	}
 	if (tokens.variant === "expr") {
 		if (tokens.type === "BinOp") {
 			const left = interpretTokens(tokens.left, scope);
 			const right = interpretTokens(tokens.right, scope);
+			if (typeof left !== "number" || typeof right !== "number") {
+				throw '(error dynamic "not a number")';
+			}
 			if (tokens.op === "Add") {
 				return add(left, right);
 			}
@@ -383,6 +415,9 @@ function interpretTokens(tokens, scope) {
 		}
 		if (tokens.type === "UnaryOp") {
 			const operand = interpretTokens(tokens.operand, scope);
+			if (typeof operand !== "number") {
+				throw '(error dynamic "not a number")';
+			}
 			if (tokens.op === "UAdd") {
 				return uAdd(operand);
 			}
@@ -392,36 +427,39 @@ function interpretTokens(tokens, scope) {
 		}
 		if (tokens.type === "Call") {
 			const funcName = tokens.func.id;
-			if (!scope.functions[funcName]) {
+			const func = scope[funcName];
+			if (!func) {
 				throw '(error dynamic "unknown function")';
 			}
-			// Loop through our function's arguments and 
-			// assign each one to the expression in order
-			// We need to make a variables object
-
-			newScope = {
-				variables: scope.functions[funcName].argNames.reduce((o, argName, i) => {
-					if (!tokens.args[i]) {
-						throw '(error dynamic "arity mismatch")'
-					}
-					return {
-						...o,
-						[argName]: interpretTokens(tokens.args[i], scope)
-					}
-				}, scope.variables),
-				functions: scope.functions
+			if (typeof func?.ret !== "function") {
+				throw '(error dynamic "not a function")';
 			}
-			return interpretTokens(scope.functions[funcName].ret(), newScope);
+
+			newScope =  func.argNames.reduce((o, argName, i) => {
+				if (!tokens.args[i]) {
+					throw '(error dynamic "arity mismatch")'
+				}
+				return {
+					...o,
+					[argName]: interpretTokens(tokens.args[i], scope)
+				}
+			}, scope)
+			
+			return interpretTokens(func.ret(), newScope);
 		}
 		if (tokens.type === "Constant") {
 			return Number(tokens.value.content);
 		}
+		if (tokens.type === "Lambda") {
+			return createLambda(tokens)
+		}
 	}
-	if (tokens.variant === "name_expr") {
-		if (!scope.variables[tokens.id]) {
+	
+	if (tokens.variant === "expr") {
+		if (!scope[tokens.id]) {
 			throw '(error dynamic "unbound variable")';
 		}
-		return scope.variables[tokens.id]; // Return whatever value we have for that id in the lookup table
+		return scope[tokens.id]; // Return whatever value we have for that id in the lookup table
 	}
 }
 
@@ -488,12 +526,17 @@ function desugar(tokens) {
 				args: tokens.args.map(arg => desugar(arg))
 			}
 		}
-		if (tokens.type === "Constant") {
+		if (tokens.type === "Lambda") {
+			return {
+				variant: "expr",
+				type: "Lambda",
+				args: tokens.args.map(arg => desugar(arg)),
+				body: desugar(tokens.body)
+			}
+		}
+		if (tokens.type === "Constant" || tokens.type === "Name") {
 			return tokens;
 		}
-	}
-	if (tokens.variant === "name_expr") {
-		return tokens;
 	}
 	throw "Cannot desugar unrecognized token variant";
 }
@@ -501,10 +544,7 @@ function desugar(tokens) {
 function interp3(input) {
 	try {
 		const desugaredTokens = desugar(getTokens(input));
-		const initialEnv = {
-			functions: {},
-			variables: {},
-		};
+		const initialEnv = {};
 		return `(value ${interpretTokens(desugaredTokens, initialEnv)})`;
 	}
 	catch(e) {
@@ -560,6 +600,8 @@ const basicUnary = "(UnaryOp [op (USub)] [operand (Constant [value 0] [kind #f])
 // console.assert(interp3("(UnaryOp [op (USub)] [operand (Constant [value 4] [kind #f])])") === "(value -4)");
 // console.assert(interp3(basicUnary) === "(value 0)");
 
+
+
 const readline  = require("readline")
 var rl = readline.createInterface({
 	input: process.stdin,
@@ -567,7 +609,9 @@ var rl = readline.createInterface({
 	terminal: false
 });
 rl.on('line', function(line){
+	testingFromStdin = true;
     console.log(interp3(typeof line === "string" ? line : basicUnary)); // Project 3
+	testingFromStdin = false;
 })
 
 
